@@ -1,32 +1,28 @@
-# buildspec.yml — put this file at the root of EVERY repo (app1 to app7)
 version: 0.2
 
 phases:
   pre_build:
     commands:
       - echo Logging in to Amazon ECR...
-      - aws ecr get-login-password --region ap-south-1 | docker login --username AWS --password-stdin $REPOSITORY_URI
+      - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com
+      - REPOSITORY_URI=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_NAME
 
   build:
     commands:
       - echo Building the Docker image...
       - docker build -t $REPOSITORY_URI:latest .
-      - docker tag $REPOSITORY_URI:latest $REPOSITORY_URI:$CODEBUILD_BUILD_ID
+      - docker tag $REPOSITORY_URI:latest $REPOSITORY_URI:$IMAGE_TAG
 
   post_build:
     commands:
       - echo Pushing the Docker image...
       - docker push $REPOSITORY_URI:latest
-      - docker push $REPOSITORY_URI:$CODEBUILD_BUILD_ID
-      - echo Writing imagedefinitions.json for CodePipeline ECS deploy...
-      - printf '[{"name":"app%s","imageUri":"%s:latest"}]' "${REPO_NUMBER}" "$REPOSITORY_URI" > imagedefinitions.json
+      - docker push $REPOSITORY_URI:$IMAGE_TAG
+      - echo Writing imagedefinitions.json with correct container name...
+      # THIS IS THE FIX — extracts "app7" from "app7-prod"
+      - printf '[{"name":"%s","imageUri":"%s"}]' $(echo $IMAGE_REPO_NAME | cut -d'-' -f1) $REPOSITORY_URI:$IMAGE_TAG > imagedefinitions.json
       - cat imagedefinitions.json
 
 artifacts:
   files:
     - imagedefinitions.json
-
-environment:
-  variables:
-    REPOSITORY_URI: none   # will be overridden by CodeBuild project
-    REPO_NUMBER: none      # 1 to 7 – will be set per project in Terraform
